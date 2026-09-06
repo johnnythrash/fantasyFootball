@@ -108,6 +108,12 @@
 				const errorData = await response.json();
 				throw new Error(errorData.message || 'Import failed');
 			}
+			const result = await response.json();
+			const failures = (result.results ?? []).filter((item: { ok?: boolean }) => !item.ok);
+			const successes = (result.results ?? []).filter((item: { ok?: boolean }) => item.ok);
+			if (!successes.length) {
+				throw new Error(failures.map((item: { season?: number; error?: string }) => `${item.season}: ${item.error ?? 'Import failed'}`).join('; ') || 'ESPN imported no seasons');
+			}
 
 			showImportModal = false;
 			await loadLeagues(); // Refresh the list
