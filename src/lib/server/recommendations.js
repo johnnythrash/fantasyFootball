@@ -2,7 +2,7 @@
 const starterTargets = { QB: 1, RB: 2, WR: 2, TE: 1, DST: 1, K: 1 };
 
 /** @typedef {{name:string,position?:string|null,consensusRank?:number|null,adp?:number|null,espnDisplayedRank?:number|null,tier?:number|null,projectedPoints?:number|null,pointVorp?:number|null,replacementPoints?:number|null,projectionSourceCount?:number|null,projectionDisagreement?:number|null,injuryStatus?:string|null,injuryRiskPenalty?:number|null,injuryRiskReasons?:string[],expectedGamesMissed?:number|null,[key:string]:unknown}} Candidate */
-/** @typedef {{completed?:boolean,currentPick?:number,nextUserPick?:number|null,teamCount?:number,rosterSizeHint?:number|null,rosterCounts?:Record<string,number>,rosterSlots?:Record<string,number>,rosterByeCounts?:Record<string,number>,rosterPositionByeCounts?:Record<string,Record<string,number>>}} DraftContext */
+/** @typedef {{completed?:boolean,currentPick?:number,nextUserPick?:number|null,teamCount?:number,rosterSizeHint?:number|null,rosterCounts?:Record<string,number>,rosterSlots?:Record<string,number>,rosterByeCounts?:Record<string,number>,rosterPositionByeCounts?:Record<string,Record<string,number>>,scoring?:{rules?:Record<string,number>}}} DraftContext */
 /** @typedef {{signals?:Array<{position:string,active:boolean,intensity:number,lastSix:number,demandMultiple:number}>}} DraftMarket */
 
 /** Build an explainable shortlist from provider-neutral player signals. */
@@ -60,12 +60,13 @@ export function recommendPlayers(players, context, market = {}) {
 		const earlySpecialistPenalty = ['K', 'DST'].includes(position) && round < Math.max(10, (context.teamCount || 10) - 1) ? 35 : 0;
 		const qbDepthPenalty = position === 'QB' && rostered >= 1 ? (round < 9 ? 38 : 0) : 0;
 		const qbDepthBonus = position === 'QB' && needsSecondQuarterback && round >= 9 ? (round >= 13 ? 16 : 9) : 0;
+		const sixPointPassingBonus = position === 'QB' && Number(context.scoring?.rules?.['4']) >= 6 ? (rostered === 0 ? 4 : 2) : 0;
 		const bye = Number(player.byeWeek);
 		const samePositionBye = Number(context.rosterPositionByeCounts?.[position]?.[String(bye)] ?? 0);
 		const totalBye = Number(context.rosterByeCounts?.[String(bye)] ?? 0);
 		const byePenalty = Number.isInteger(bye) && bye > 0 ? Math.min(12, samePositionBye * (position === 'QB' || position === 'TE' ? 8 : 3) + Math.max(0, totalBye - samePositionBye)) : 0;
 		const espnVerifiedBonus = player.espnVerified ? 3 : 0;
-		const rawScore = 110 - rank * 0.34 + value + adpValue + urgency + needBonus + qbDepthBonus + vorp + tierDrop + marketRunBonus + espnVerifiedBonus - stalePenalty - injuryPenalty - byePenalty - earlySpecialistPenalty - qbDepthPenalty;
+		const rawScore = 110 - rank * 0.34 + value + adpValue + urgency + needBonus + qbDepthBonus + sixPointPassingBonus + vorp + tierDrop + marketRunBonus + espnVerifiedBonus - stalePenalty - injuryPenalty - byePenalty - earlySpecialistPenalty - qbDepthPenalty;
 		const reasons = [];
 		if (value >= 5) reasons.push(`${Math.round(value / 0.55)} picks past consensus value`);
 		if (endgameNeed) reasons.push(`required ${position} slot must be filled before the draft ends`);
@@ -76,6 +77,7 @@ export function recommendPlayers(players, context, market = {}) {
 		if (player.projectedPoints != null) reasons.push(`${Number(player.projectedPoints).toFixed(1)} projected PPR points`);
 		if (injuryPenalty) reasons.push(...(player.injuryRiskReasons?.length ? player.injuryRiskReasons : [`${player.injuryStatus} injury risk applied`]));
 		if (qbDepthBonus) reasons.push(`adds the preferred second quarterback`);
+		if (sixPointPassingBonus) reasons.push(`6-point passing touchdowns raise quarterback value`);
 		if (byePenalty) reasons.push(`bye ${bye} overlaps ${samePositionBye ? `at ${position}` : 'with the roster'}`);
 		if (stalePenalty) reasons.push(`room has passed repeatedly; ranking confidence reduced`);
 		if (player.pointVorp != null && vorp >= 4) reasons.push(`${Number(player.pointVorp).toFixed(1)} projected points above replacement`);
@@ -86,7 +88,7 @@ export function recommendPlayers(players, context, market = {}) {
 		if (qbDepthPenalty) reasons.push(`${rostered} QB already rostered; backup cost applied`);
 		if (!reasons.length) reasons.push('best blended rank and roster fit');
 		return { ...player, recommendationScore: Math.round(rawScore * 10) / 10, availabilityRisk: Math.round(goneBeforeNext * 100), reasons: reasons.slice(0, 3), scoreComponents: {
-			consensus: roundScore(110 - rank * 0.34), value: roundScore(value), adpValue: roundScore(adpValue), availability: roundScore(urgency), rosterNeed: roundScore(needBonus + qbDepthBonus), replacementValue: roundScore(vorp), staleMarket: roundScore(-stalePenalty), espnVerified: roundScore(espnVerifiedBonus), tierScarcity: roundScore(tierDrop), roomTrend: roundScore(marketRunBonus), injury: roundScore(-injuryPenalty), byeFit: roundScore(-byePenalty), rosterConstruction: roundScore(-earlySpecialistPenalty - qbDepthPenalty)
+			consensus: roundScore(110 - rank * 0.34), value: roundScore(value), adpValue: roundScore(adpValue), availability: roundScore(urgency), rosterNeed: roundScore(needBonus + qbDepthBonus), scoringFit: roundScore(sixPointPassingBonus), replacementValue: roundScore(vorp), staleMarket: roundScore(-stalePenalty), espnVerified: roundScore(espnVerifiedBonus), tierScarcity: roundScore(tierDrop), roomTrend: roundScore(marketRunBonus), injury: roundScore(-injuryPenalty), byeFit: roundScore(-byePenalty), rosterConstruction: roundScore(-earlySpecialistPenalty - qbDepthPenalty)
 		} };
 	}).sort((a, b) => b.recommendationScore - a.recommendationScore).slice(0, 12).map((player, index) => ({ ...player, recommendationRank: index + 1 }));
 }

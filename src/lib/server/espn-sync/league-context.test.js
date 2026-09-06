@@ -14,6 +14,11 @@ test('detects the user team and next snake pick from the ESPN URL', () => {
 	assert.equal(context.nextUserPick, 11);
 	assert.equal(context.picksUntilNextTurn, 2);
 	assert.deepEqual(context.rosterCounts, { RB: 1 });
+	assert.equal(context.scoring.format, 'PPR');
+	assert.equal(context.scoring.rules['4'], 6);
+	assert.equal(context.rosterSlots.BENCH, 8);
+	assert.equal(context.rosterSlots.IR, 1);
+	assert.equal(context.settingsSource, 'jce-draft-fallback');
 });
 
 test('does not project another turn after a complete 17-round draft', () => {

@@ -109,3 +109,12 @@ test('uses a granular expected-return penalty when supplied', () => {
 	assert.equal(result[0].name, 'Healthy RB');
 	assert.match(result[1].reasons.join(' '), /8 missed games/);
 });
+
+test('slightly raises quarterbacks in six-point passing touchdown leagues', () => {
+	const result = recommendPlayers([
+		{ name: 'Quarterback', position: 'QB', consensusRank: 50, adp: 50 },
+		{ name: 'Receiver', position: 'WR', consensusRank: 50, adp: 50 }
+	], { ...context, rosterCounts: { RB: 2, WR: 2 }, scoring: { rules: { '4': 6 } } });
+	assert.equal(result[0].name, 'Quarterback');
+	assert.match(result[0].reasons.join(' '), /6-point passing touchdowns/);
+});

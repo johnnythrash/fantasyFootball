@@ -1,4 +1,11 @@
-const defaultRoster = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, DST: 1, K: 1, BENCH: 7, IR: 0 };
+// Personal JCE League fallback. Keep this explicit so a failed ESPN settings
+// import still produces the correct draft-day roster and scoring behavior.
+const defaultRoster = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, DST: 1, K: 1, BENCH: 8, IR: 1 };
+const defaultScoring = {
+	format: 'PPR', receptionPoints: 1,
+	rules: { '3': 0.04, '4': 6, '19': 2, '20': -2, '24': 0.1, '25': 6, '26': 2, '42': 0.1, '43': 6, '44': 2, '53': 1, '72': -2 },
+	recognizedRules: 12, unknownRuleIds: []
+};
 /** @type {Record<string, string>} */
 const espnSlotNames = { '0': 'QB', '2': 'RB', '4': 'WR', '6': 'TE', '16': 'DST', '17': 'K', '20': 'BENCH', '21': 'IR', '23': 'FLEX', '24': 'FLEX', '25': 'SUPERFLEX' };
 
@@ -26,8 +33,8 @@ export function deriveLeagueContext(state, importedLeague) {
 		teamCount: teams.length || importedLeague?.team_count || 0, draftType: importedLeague?.draft_type ?? 'SNAKE', draftSlot,
 		rosterSizeHint: Number(state?.rosterSizeHint) || null,
 		currentPick, completed, nextUserPick, picksUntilNextTurn: nextUserPick ? Math.max(0, nextUserPick - currentPick) : null,
-		scoring: scoringLabel(espnSettings?.scoringSettings), rosterSlots: normalizeRosterSlots(espnSettings?.rosterSettings?.lineupSlotCounts),
-		settingsSource: espnSettings ? 'league-import' : 'safe-defaults', rosterCounts,
+		scoring: espnSettings ? scoringLabel(espnSettings.scoringSettings) : { ...defaultScoring, rules: { ...defaultScoring.rules } }, rosterSlots: normalizeRosterSlots(espnSettings?.rosterSettings?.lineupSlotCounts),
+		settingsSource: espnSettings ? 'league-import' : 'jce-draft-fallback', rosterCounts,
 		needsLeagueImport: !espnSettings, userTeamDetected: Boolean(userTeam)
 	};
 }
