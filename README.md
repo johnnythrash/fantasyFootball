@@ -20,6 +20,8 @@ Local-first fantasy football tooling focused first on reliable ESPN live-draft s
 - Live dashboard with receiver health, recent picks, team rosters, draft completion, available-player search, and identity diagnostics
 - Automatic ESPN user-team, draft-slot, roster-construction, and next-turn detection
 - ESPN and Sleeper league-history import foundations
+- Current-season ESPN league import with encrypted credentials, exact settings, teams, and all draft picks
+- League season hub with draft-value power rankings, position comparison, likely lineup baseline, and roster-surplus trade targets
 - Local database backup and restore endpoints
 - Manual daily refresh of current player positions, teams, injury/practice status, depth-chart order, and add/drop trends through Sleeper's official read-only API
 - Locally cached 2009–2024 nflverse injury-report history with recent recurrence and missed-game risk
@@ -49,9 +51,9 @@ Local-first fantasy football tooling focused first on reliable ESPN live-draft s
 
 1. Import additional current projections, richer injury news, depth charts, handcuffs, and opportunity data into the normalized player-intelligence tables.
 2. Calibrate projection weights and ESPN selection hazards using frozen historical snapshots and out-of-sample backtests.
-3. Complete the ESPN league-import experience and validate custom scoring and lineup configurations.
-4. Add Sleeper live-draft synchronization after the ESPN workflow is stable.
-5. Build a weekly start/sit assistant using projections, matchups, injuries, and league rosters.
+3. Add live ESPN roster refresh plus weekly projections and matchups to power start/sit and in-season rankings.
+4. Turn trade-fit targets into fair offer packages using current rosters, rest-of-season value, and each team's needs.
+5. Add Sleeper live-draft synchronization after the ESPN workflow is stable.
 6. Add scheduled local backups and a restore interface.
 
 Auction drafts and hosted multi-user operation are not currently supported.
