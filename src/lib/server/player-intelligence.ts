@@ -73,6 +73,7 @@ export function rankedAvailablePlayers(seasonYear: number, teamCount: number, dr
 		LEFT JOIN player_values a ON a.player_id=p.id AND a.season_year=r.season_year AND a.source='myfantasyleague-adp' AND a.scoring_format=?
 		LEFT JOIN player_status s ON s.player_id=p.id
 		WHERE r.season_year=? AND r.source='fantasypros-ecr-via-dynastyprocess' AND r.scoring_format='PPR'
+		AND p.active=1 AND p.nfl_team IS NOT NULL AND TRIM(p.nfl_team)<>'' AND UPPER(p.nfl_team)<>'FA'
 		ORDER BY r.overall_rank`).all(`PPR_${teamCount}_TEAM`, seasonYear) as any[];
 	const projectionQuery = db.prepare(`SELECT player_id,source,projected_points,value_json,fetched_at FROM player_values
 		WHERE season_year=? AND scoring_format=? AND projected_points IS NOT NULL ORDER BY fetched_at DESC`);

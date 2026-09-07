@@ -1,5 +1,5 @@
 import { saveLeague } from '$lib/server/db/repositories';
-import { espn } from '$lib/server/providers/espn';
+import { espn, normalizeEspnAuth } from '$lib/server/providers/espn';
 import { sleeper } from '$lib/server/providers/sleeper';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -9,11 +9,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	const platform = String(body.platform ?? 'ESPN').toUpperCase() as 'ESPN' | 'SLEEPER';
 	if (!['ESPN', 'SLEEPER'].includes(platform)) throw error(400, 'Unsupported platform');
 	const seasons = Array.isArray(body.seasons) && body.seasons.length ? body.seasons.map(Number) : [new Date().getFullYear()];
+	const espnAuth = platform === 'ESPN' ? normalizeEspnAuth(body.auth) : null;
 	const results = [];
 	for (const season of seasons) {
 		try {
 			const fetched: any = platform === 'ESPN'
-				? await espn.fetchSeason({ leagueId: String(body.leagueId ?? ''), season, auth: body.auth })
+				? await espn.fetchSeason({ leagueId: String(body.leagueId ?? '').trim(), season, auth: espnAuth! })
 				: await sleeper.fetchSeason({ username: String(body.username ?? ''), season, leagueId: body.leagueId ? String(body.leagueId) : undefined });
 			const league = fetched.league;
 			const externalId = String(league.platform_league_id ?? league.espn_league_id ?? body.leagueId ?? '');
@@ -23,7 +24,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				platform, externalId, seasonYear: Number(league.season_year ?? season), name: league.name,
 				teamCount, draftType: league.draft_type, draftStarted: league.draft_started,
 				draftCompleted: league.draft_completed, userTeamId: fetched.userTeamId ? String(fetched.userTeamId) : null,
-				auth: platform === 'ESPN' ? body.auth : { username: body.username }, settings: league.settings
+				auth: platform === 'ESPN' ? espnAuth : { username: body.username }, settings: league.settings
 			}, fetched.teams.map((team: any) => ({
 				platformTeamId: String(team.espn_team_id ?? team.sleeper_roster_id),
 				name: team.team_name, ownerName: team.owner_name, draftPosition: team.draft_position,

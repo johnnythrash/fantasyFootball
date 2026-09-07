@@ -10,18 +10,39 @@ import type { Team, Pick } from '$lib/types/espnTypes';
 
 type Auth = { espn_s2: string; swid: string };
 
+export function normalizeEspnAuth(auth: Partial<Auth> | null | undefined): Auth {
+	const cookieValue = (value: unknown, name: string) => {
+		const text = String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
+		const match = text.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`, 'i'));
+		return (match?.[1] ?? text).trim();
+	};
+	const espn_s2 = cookieValue(auth?.espn_s2, 'espn_s2');
+	let swid = cookieValue(auth?.swid, 'SWID');
+	if (swid && !swid.startsWith('{')) swid = `{${swid.replace(/[{}]/g, '')}}`;
+	if (!espn_s2 || !swid) throw new Error('ESPN S2 and SWID cookies are required');
+	return { espn_s2, swid };
+}
+
 export const espn = {
 	async fetchSeason({ leagueId, season, auth }: { leagueId: string; season: number; auth: Auth }) {
+		auth = normalizeEspnAuth(auth);
 		const espnUserId = auth.swid.replace(/[{}]/g, '');
-
-		const res = await fetch(
-			`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${leagueId}?view=mDraftDetail&view=mSettings&view=mTeam&view=modular&view=mNav&seasonId=${season}`,
-			{ headers: { Cookie: `espn_s2=${auth.espn_s2}; SWID=${auth.swid};` } }
-		);
-		if (!res.ok) throw new Error(`ESPN fetch failed for ${season}`);
-
-		const history = await res.json();
-		const leagueData = history?.[0];
+		if (!/^\d+$/.test(leagueId)) throw new Error('ESPN league ID must contain only numbers');
+		const views = 'view=mDraftDetail&view=mSettings&view=mTeam&view=modular&view=mNav';
+		const headers = { Cookie: `espn_s2=${auth.espn_s2}; SWID=${auth.swid};` };
+		const currentUrl = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${leagueId}?${views}`;
+		const historyUrl = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${leagueId}?${views}&seasonId=${season}`;
+		let res = await fetch(currentUrl, { headers });
+		let payload: any = res.ok ? await res.json() : null;
+		if (!res.ok || !payload?.id) {
+			res = await fetch(historyUrl, { headers });
+			payload = res.ok ? await res.json() : null;
+		}
+		if (!res.ok) {
+			const hint = [401, 403].includes(res.status) ? ' Check that both cookies are current and copied from fantasy.espn.com.' : '';
+			throw new Error(`ESPN returned ${res.status} for ${season}.${hint}`);
+		}
+		const leagueData = Array.isArray(payload) ? payload[0] : payload;
 		if (!leagueData) throw new Error(`No ESPN data for ${season}`);
 
 		const userTeam = leagueData.teams?.find((t: { owners: string[] }) =>
