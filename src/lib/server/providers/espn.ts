@@ -28,7 +28,7 @@ export const espn = {
 		auth = normalizeEspnAuth(auth);
 		const espnUserId = auth.swid.replace(/[{}]/g, '');
 		if (!/^\d+$/.test(leagueId)) throw new Error('ESPN league ID must contain only numbers');
-		const views = 'view=mDraftDetail&view=mSettings&view=mTeam&view=modular&view=mNav';
+		const views = 'view=mDraftDetail&view=mSettings&view=mTeam&view=mRoster&view=mMatchupScore&view=mSchedule&view=mStatus&view=modular&view=mNav';
 		const headers = { Cookie: `espn_s2=${auth.espn_s2}; SWID=${auth.swid};` };
 		const currentUrl = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${leagueId}?${views}`;
 		const historyUrl = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${leagueId}?${views}&seasonId=${season}`;
@@ -65,6 +65,9 @@ export const espn = {
 			swid_cookie: auth.swid,
 			settings: {
 				espn_data: leagueData.settings,
+				espn_status: leagueData.status ?? null,
+				scoring_period_id: leagueData.scoringPeriodId ?? null,
+				schedule: leagueData.schedule ?? [],
 				last_synced: new Date().toISOString(),
 				season_stats: {
 					champion: leagueData.status?.playoffTierType ? 'determined' : 'unknown',
@@ -76,7 +79,7 @@ export const espn = {
 		};
 
 		// teams (exact columns you’ve been inserting)
-		const teams = (leagueData.teams ?? []).map((t: Team) => ({
+		const teams = (leagueData.teams ?? []).map((t: Team & { roster?: any }) => ({
 			espn_team_id: t.id,
 			team_name: t.name || `${t.nickname}`,
 			owner_name: t.primaryOwner || 'Unknown Owner', // you were storing GUID here; keep match
@@ -86,7 +89,8 @@ export const espn = {
 			regular_season_wins: t.record?.overall?.wins ?? 0,
 			regular_season_losses: t.record?.overall?.losses ?? 0,
 			points_for: t.record?.overall?.pointsFor ?? 0,
-			points_against: t.record?.overall?.pointsAgainst ?? 0
+			points_against: t.record?.overall?.pointsAgainst ?? 0,
+			roster_entries: (t.roster?.entries ?? []).map((entry: any) => compactRosterEntry(entry))
 		}));
 
 		// picks (enhanced like your history route)
@@ -133,3 +137,20 @@ export const espn = {
 		return { league, teams, picks, userTeamId: userTeam.id as number };
 	}
 };
+
+function compactRosterEntry(entry: any) {
+	const player = entry?.playerPoolEntry?.player ?? entry?.player ?? null;
+	return {
+		lineupSlotId: entry?.lineupSlotId ?? null,
+		acquisitionDate: entry?.acquisitionDate ?? null,
+		acquisitionType: entry?.acquisitionType ?? null,
+		player: player ? {
+			id: player.id, fullName: player.fullName, defaultPositionId: player.defaultPositionId,
+			eligibleSlots: player.eligibleSlots ?? [], proTeamId: player.proTeamId,
+			injured: player.injured ?? false, injuryStatus: player.injuryStatus ?? null,
+			stats: (player.stats ?? []).map((stat: any) => ({ appliedTotal: stat.appliedTotal ?? null,
+				externalId: stat.externalId ?? null, scoringPeriodId: stat.scoringPeriodId ?? null,
+				statSourceId: stat.statSourceId ?? null, statSplitTypeId: stat.statSplitTypeId ?? null }))
+		} : null
+	};
+}

@@ -43,7 +43,7 @@ export function getLeague(id: string) {
 export function getLeagueTeams(leagueId: string) {
 	return (getDatabase().prepare('SELECT * FROM teams WHERE league_id=? ORDER BY draft_position, name').all(leagueId) as any[]).map((row) => ({
 		id: row.id, team_name: row.name, owner_name: row.owner_name, draft_position: row.draft_position,
-		espn_team_id: Number(row.platform_team_id) || row.platform_team_id,
+		espn_team_id: Number(row.platform_team_id) || row.platform_team_id, data: parse(row.data_json),
 		sleeper_roster_id: Number(row.platform_team_id) || row.platform_team_id, is_user: Boolean(row.is_user)
 	}));
 }
@@ -72,9 +72,15 @@ export function saveLeague(input: LocalLeague, teams: LocalTeam[] = [], picks: L
 		db.prepare('DELETE FROM teams WHERE league_id=?').run(id);
 		const teamInsert = db.prepare('INSERT INTO teams(id,league_id,platform_team_id,name,owner_name,draft_position,is_user,data_json) VALUES(?,?,?,?,?,?,?,?)');
 		for (const team of teams) teamInsert.run(randomUUID(), id, String(team.platformTeamId), team.name, team.ownerName ?? null, team.draftPosition ?? null, Number(team.isUser), team.data ? JSON.stringify(team.data) : null);
+		const previousPicks = new Map((db.prepare('SELECT pick_number,player_name,player_position,player_nfl_team FROM draft_picks WHERE league_id=?').all(id) as any[]).map((pick) => [Number(pick.pick_number), pick]));
 		db.prepare('DELETE FROM draft_picks WHERE league_id=?').run(id);
 		const pickInsert = db.prepare('INSERT INTO draft_picks(league_id,pick_number,round_number,round_pick,team_id,platform_player_id,player_name,player_position,player_nfl_team,player_data_json,picked_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
-		for (const pick of picks) pickInsert.run(id, pick.pickNumber, pick.roundNumber, pick.roundPick, pick.teamId ?? null, pick.platformPlayerId ?? null, pick.playerName, pick.position ?? null, pick.nflTeam ?? null, pick.data ? JSON.stringify(pick.data) : null, pick.pickedAt ?? null);
+		for (const pick of picks) {
+			const previous = previousPicks.get(Number(pick.pickNumber));
+			const name = pick.playerName && pick.playerName !== 'Unknown Player' ? pick.playerName : previous?.player_name ?? pick.playerName;
+			const position = pick.position && pick.position !== 'FLEX' ? pick.position : previous?.player_position ?? pick.position;
+			pickInsert.run(id, pick.pickNumber, pick.roundNumber, pick.roundPick, pick.teamId ?? null, pick.platformPlayerId ?? null, name, position ?? null, pick.nflTeam ?? previous?.player_nfl_team ?? null, pick.data ? JSON.stringify(pick.data) : null, pick.pickedAt ?? null);
+		}
 	});
 	transaction();
 	return id;
