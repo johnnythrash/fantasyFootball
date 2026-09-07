@@ -85,13 +85,18 @@ export async function fetchEspnPlayers(
 ): Promise<Map<number, ESPNPlayer>> {
 	const map = new Map<number, ESPNPlayer>();
 	try {
+		const filter = JSON.stringify({ players: { filterIds: { value: ids.map(Number).filter(Number.isFinite) } } });
 		const r = await fetch(
 			`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/players?scoringPeriodId=0&view=players_wl`,
-			{ headers: { Cookie: `espn_s2=${espn_s2}; SWID=${swid};` } }
+			{ headers: { Cookie: `espn_s2=${espn_s2}; SWID=${swid};`, 'x-fantasy-filter': filter } }
 		);
 		if (r.ok) {
-			const rows = (await r.json()) as ESPNPlayer[];
-			for (const p of rows) if (ids.includes(p.id.toString())) map.set(p.id, p);
+			const payload: any = await r.json();
+			const rows = Array.isArray(payload) ? payload : payload?.players ?? [];
+			for (const row of rows) {
+				const p = (row?.player ?? row) as ESPNPlayer;
+				if (p?.id != null && ids.includes(p.id.toString())) map.set(p.id, p);
+			}
 		}
 	} catch {
 		/* swallow */

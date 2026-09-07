@@ -287,7 +287,7 @@
 						<div class="bg-gray-50 px-6 py-3">
 							<div class="flex justify-between text-sm">
 								<a
-									href="/analysis/{mainLeague.platform_league_id}"
+									href="/leagues/analysis/{mainLeague.id}"
 									class="btn text-blue-600 hover:text-blue-900">View Analysis</a
 								>
 								<span class="text-gray-500"
