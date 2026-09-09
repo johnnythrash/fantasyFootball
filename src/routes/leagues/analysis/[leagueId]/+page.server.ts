@@ -38,7 +38,7 @@ export const load = (async ({ params }) => {
 				const row = sleeperValue.get(league.season_year, playerId) as any;
 				if (!row?.full_name) return null;
 				return { id: row.id, sleeperId: playerId, espnId: `sleeper:${playerId}`, name: row.full_name,
-					position: row.position, nflTeam: row.nfl_team, byeWeek: row.bye_week ?? null,
+					position: row.position === 'DEF' ? 'DST' : row.position, nflTeam: row.nfl_team, byeWeek: row.bye_week ?? null,
 					rank: Number(row.overall_rank) || null, positionRank: Number(row.position_rank) || null,
 					injuryStatus: row.injury_status ?? null, pickNumber: null, round: null,
 					lineupSlotId: entry.isStarter ? 0 : entry.isReserve ? 21 : 20,
@@ -57,7 +57,7 @@ export const load = (async ({ params }) => {
 				lineupSlotId: Number(entry.lineupSlotId), weeklyProjected: finite(weekly?.appliedTotal), seasonProjected: finite(season?.appliedTotal) };
 		}).filter(Boolean);
 		const players = (livePlayers.length ? livePlayers : draftedPlayers).filter((player: any) => player.name && player.name !== 'Unknown Player');
-		const { starters, bench } = chooseStarters(players);
+		const { starters, bench } = chooseStarters(players, league.platform === 'SLEEPER' ? league.settings?.roster_positions : null);
 		const weeklyTotal = starters.reduce((sum, player) => sum + Number(player.weeklyProjected ?? 0), 0);
 		const starterValue = starters.reduce((sum, player) => sum + playerValue(player) * 1.25, 0);
 		const depthValue = bench.slice().sort(byRank).slice(0, 5).reduce((sum, player) => sum + playerValue(player) * 0.35, 0);
@@ -93,16 +93,28 @@ export const load = (async ({ params }) => {
 			: `${league.platform === 'SLEEPER' ? 'Live Sleeper rosters' : 'Draft-value baseline'} using current consensus rank, current injuries, likely starters, and shallow bench depth; weekly point projections are not yet available for this league.` };
 }) satisfies PageServerLoad;
 
-function chooseStarters(players: any[]) {
+function chooseStarters(players: any[], rosterPositions?: string[] | null) {
 	const remaining = players.slice().sort(byWeeklyThenRank);
 	const starters: any[] = [];
-	for (const [position, needed] of Object.entries(starterNeeds)) for (let count = 0; count < needed; count++) {
-		const index = remaining.findIndex((player) => player.position === position);
+	const slots = Array.isArray(rosterPositions) && rosterPositions.length
+		? rosterPositions.filter((slot) => !['BN', 'IR', 'TAXI'].includes(slot))
+		: Object.entries(starterNeeds).flatMap(([position, count]) => Array(count).fill(position)).concat('FLEX');
+	const orderedSlots = slots.slice().sort((a, b) => Number(isFlexible(a)) - Number(isFlexible(b)));
+	for (const slot of orderedSlots) {
+		const eligible = slotEligibility(slot);
+		const index = remaining.findIndex((player) => eligible.includes(player.position));
 		if (index >= 0) starters.push(remaining.splice(index, 1)[0]);
 	}
-	const flex = remaining.findIndex((player) => ['RB', 'WR', 'TE'].includes(player.position));
-	if (flex >= 0) starters.push(remaining.splice(flex, 1)[0]);
 	return { starters: starters.sort((a, b) => String(a.position).localeCompare(String(b.position)) || byRank(a, b)), bench: remaining };
+}
+function isFlexible(slot: string) { return ['FLEX', 'SUPER_FLEX', 'REC_FLEX', 'WRRB_FLEX'].includes(slot); }
+function slotEligibility(slot: string) {
+	if (slot === 'FLEX') return ['RB', 'WR', 'TE'];
+	if (slot === 'SUPER_FLEX') return ['QB', 'RB', 'WR', 'TE'];
+	if (slot === 'REC_FLEX') return ['WR', 'TE'];
+	if (slot === 'WRRB_FLEX') return ['WR', 'RB'];
+	if (slot === 'DEF') return ['DST'];
+	return [slot];
 }
 function countPositions(players: any[]) { return players.reduce((counts, player) => ({ ...counts, [player.position]: (counts[player.position] ?? 0) + 1 }), {} as Record<string, number>); }
 function playerValue(player: any) { return Math.max(0, 220 - Number(player.rank ?? player.pickNumber ?? 220)) - (player.injuryStatus && !['NA', 'ACTIVE'].includes(String(player.injuryStatus).toUpperCase()) ? 8 : 0); }
