@@ -30,6 +30,8 @@ export const load = (async ({ params }) => {
 		JOIN projection_sets ps ON ps.id=pp.projection_set_id JOIN players p ON p.id=pp.player_id
 		WHERE p.nfl_team=? AND p.position IN ('DST','DEF') AND ps.source='espn-weekly-proxy' AND ps.season_year=?
 		AND CAST(json_extract(ps.metadata_json,'$.week') AS INTEGER)=? ORDER BY ps.imported_at DESC LIMIT 1`);
+	const weeklyConsensus = db.prepare(`SELECT overall_rank,position_rank,projected_points,value_json,fetched_at FROM player_values
+		WHERE player_id=? AND season_year=? AND scoring_format='PPR' AND source='fantasypros-weekly-ecr-via-dynastyprocess' LIMIT 1`);
 	const rosters = teams.map((team) => {
 		const liveEntries = Array.isArray(team.data?.roster_entries) ? team.data.roster_entries : [];
 		const draftedPlayers = picks.filter((pick) => String(pick.team_id) === String(team.espn_team_id)).map((pick) => {
@@ -47,14 +49,21 @@ export const load = (async ({ params }) => {
 				if (!row?.full_name) return null;
 				const isDefense = ['DST', 'DEF'].includes(String(row.position));
 				const projection = (isDefense ? weeklyDefenseProjection.get(row.nfl_team, league.season_year, scoringPeriod) : weeklyProjection.get(row.id, league.season_year, scoringPeriod)) as any;
+				const weekly = weeklyConsensus.get(row.id, league.season_year) as any;
+				const weeklyMeta = weekly?.value_json ? JSON.parse(weekly.value_json) : {};
 				const defensePoints = finite(projection?.projected_points);
-				const projected = isDefense ? (defensePoints == null ? null : round(defensePoints)) : scoreSleeperProjection(projection?.stats_json, league.settings?.scoring_settings);
+				const espnProjected = isDefense ? (defensePoints == null ? null : round(defensePoints)) : scoreSleeperProjection(projection?.stats_json, league.settings?.scoring_settings);
+				const weeklyFallback = finite(weekly?.projected_points);
+				const projected = espnProjected ?? (weeklyFallback == null ? null : round(weeklyFallback));
 				return { id: row.id, sleeperId: playerId, espnId: `sleeper:${playerId}`, name: row.full_name,
 					position: row.position === 'DEF' ? 'DST' : row.position, nflTeam: row.nfl_team, byeWeek: row.bye_week ?? null,
 					rank: Number(row.overall_rank) || null, positionRank: Number(row.position_rank) || null,
 					injuryStatus: row.injury_status ?? null, pickNumber: null, round: null,
 					lineupSlotId: entry.isStarter ? 0 : entry.isReserve ? 21 : 20,
-					weeklyProjected: projected, seasonProjected: null, projectionSource: projected != null ? (isDefense ? 'ESPN defense proxy' : 'ESPN stat-line proxy') : null };
+					weeklyProjected: projected, seasonProjected: null,
+					projectionSource: espnProjected != null ? (isDefense ? 'ESPN defense proxy' : 'ESPN stat-line proxy') : weeklyFallback != null ? 'Weekly consensus fallback' : null,
+					weeklyRank: finite(weekly?.overall_rank), weeklyPositionRank: finite(weekly?.position_rank), weeklyGrade: weeklyMeta.grade ?? null,
+					opponent: weeklyMeta.opponent ?? null, rankUncertainty: finite(weeklyMeta.uncertainty), weeklyNote: weeklyMeta.note ?? null };
 			}
 			const espnPlayer = entry?.player;
 			if (!espnPlayer?.id || !espnPlayer.fullName) return null;
@@ -94,10 +103,26 @@ export const load = (async ({ params }) => {
 		.sort(byRank).slice(0, 12);
 	const recommendedIds = new Set((user?.starters ?? []).map((player: any) => player.espnId));
 	const currentIds = new Set((user?.currentStarters ?? []).map((player: any) => player.espnId));
-	const startSit = {
+	const startSit: any = {
 		start: (user?.starters ?? []).filter((player: any) => !currentIds.has(player.espnId)),
-		sit: (user?.currentStarters ?? []).filter((player: any) => !recommendedIds.has(player.espnId))
+		sit: (user?.currentStarters ?? []).filter((player: any) => !recommendedIds.has(player.espnId)),
+		edge: null as number | null,
+		confidence: 'No change' as string,
+		closeCall: null
 	};
+	if (startSit.start.length && startSit.sit.length) {
+		const edge = finite(startSit.start[0].weeklyProjected) != null && finite(startSit.sit[0].weeklyProjected) != null
+			? round(Number(startSit.start[0].weeklyProjected) - Number(startSit.sit[0].weeklyProjected)) : null;
+		startSit.edge = edge;
+		const weeklyConflict = finite(startSit.start[0].weeklyRank) != null && finite(startSit.sit[0].weeklyRank) != null
+			&& Number(startSit.start[0].weeklyRank) > Number(startSit.sit[0].weeklyRank);
+		if (edge == null || edge < 1.5 || (weeklyConflict && edge < 3)) {
+			startSit.closeCall = { start: startSit.start[0], sit: startSit.sit[0], edge, weeklyConflict };
+			startSit.start = [];
+			startSit.sit = [];
+			startSit.confidence = 'Hold';
+		} else startSit.confidence = edge >= 3 ? 'High' : 'Medium';
+	}
 	const projectionCoverage = {
 		projected: (user?.players ?? []).filter((player: any) => player.weeklyProjected != null).length,
 		total: (user?.players ?? []).length

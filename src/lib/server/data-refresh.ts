@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'no
 import { basename, dirname, join } from 'node:path';
 import { databasePath, getDatabase } from '$lib/server/db/database';
 import { refreshSleeperPlayers, sleeperRefreshStatus } from '$lib/server/player-sources/sleeper';
-import { consensusRankingStatus, refreshConsensusRankings } from '$lib/server/player-sources/rankings';
+import { consensusRankingStatus, refreshConsensusRankings, refreshWeeklyConsensusRankings, weeklyConsensusRankingStatus } from '$lib/server/player-sources/rankings';
 import { mflAdpStatus, refreshMflAdp } from '$lib/server/player-sources/adp';
 import { importProjectionCsv } from '$lib/server/player-sources/projections';
 import { historicalInjuryStatus, refreshHistoricalInjuries } from '$lib/server/player-sources/injury-history';
@@ -30,13 +30,14 @@ export async function refreshPlayerData(options: { force?: boolean; teamCount?: 
 	const teamCount = Number(options.teamCount) || 10;
 	const results: Record<string, unknown> = {};
 	results.watchedImports = await runProvider('watched-projections', () => scanWatchedProjectionImports(), true);
-	const [sleeper, rankings, adp, injuryHistory] = await Promise.all([
+	const [sleeper, rankings, weeklyRankings, adp, injuryHistory] = await Promise.all([
 		runProvider('sleeper', refreshSleeperPlayers, force || isStale(sleeperRefreshStatus())),
 		runProvider('consensus-rankings', refreshConsensusRankings, force || isStale(consensusRankingStatus())),
+		runProvider('weekly-consensus-rankings', refreshWeeklyConsensusRankings, force || isStale(weeklyConsensusRankingStatus())),
 		runProvider(`mfl-adp-${teamCount}`, () => refreshMflAdp(teamCount), force || isStale(mflAdpStatus(teamCount))),
 		runProvider('injury-history', () => refreshHistoricalInjuries(), isStale(historicalInjuryStatus()))
 	]);
-	Object.assign(results, { sleeper, rankings, adp, injuryHistory });
+	Object.assign(results, { sleeper, rankings, weeklyRankings, adp, injuryHistory });
 	return { results, health: providerHealth() };
 }
 

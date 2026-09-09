@@ -6,6 +6,8 @@ import { parseCsv } from './csv.js';
 
 const source = 'fantasypros-ecr-via-dynastyprocess';
 const url = 'https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_fpecr_latest.csv';
+const weeklySource = 'fantasypros-weekly-ecr-via-dynastyprocess';
+const weeklyUrl = 'https://raw.githubusercontent.com/dynastyprocess/data/master/files/fp_latest_weekly.csv';
 const allowedPositions = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DST']);
 
 type RankingRow = Record<string, string>;
@@ -63,6 +65,50 @@ export async function refreshConsensusRankings() {
 
 export function consensusRankingStatus() {
 	const row = getDatabase().prepare("SELECT value_json,expires_at,updated_at FROM provider_cache WHERE key='player-source:consensus-rankings'").get() as any;
+	return row ? { ...JSON.parse(row.value_json), updatedAt: row.updated_at, expiresAt: row.expires_at, stale: !row.expires_at || new Date(row.expires_at) <= new Date() } : null;
+}
+
+export async function refreshWeeklyConsensusRankings() {
+	ensurePlayerCatalog();
+	const response = await fetch(weeklyUrl, { headers: { 'user-agent': 'fantasy-football-local' } });
+	if (!response.ok) throw new Error(`Weekly consensus rankings refresh returned ${response.status}`);
+	const rows = (parseCsv(await response.text()) as RankingRow[]).filter((row) => allowedPositions.has(row.pos));
+	if (!rows.length) throw new Error('Weekly consensus rankings contained no fantasy players');
+	const scrapeDate = rows.map((row) => row.scrape_date).filter(Boolean).sort().at(-1) ?? new Date().toISOString().slice(0, 10);
+	const seasonYear = Number(scrapeDate.slice(0, 4));
+	const db = getDatabase();
+	const byFantasyPros = db.prepare('SELECT id FROM players WHERE fantasypros_id=?');
+	const byNameTeam = db.prepare('SELECT id FROM players WHERE normalized_name=? AND (nfl_team=? OR ? IS NULL) ORDER BY active DESC LIMIT 2');
+	const insert = db.prepare(`INSERT INTO player_values(player_id,season_year,scoring_format,source,overall_rank,position_rank,projected_points,value_json,fetched_at)
+		VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(player_id,season_year,scoring_format,source) DO UPDATE SET overall_rank=excluded.overall_rank,
+		position_rank=excluded.position_rank,projected_points=excluded.projected_points,value_json=excluded.value_json,fetched_at=excluded.fetched_at`);
+	const fetchedAt = new Date().toISOString();
+	let imported = 0;
+	db.transaction(() => {
+		db.prepare('DELETE FROM player_values WHERE season_year=? AND scoring_format=? AND source=?').run(seasonYear, 'PPR', weeklySource);
+		for (const row of rows) {
+			let player = byFantasyPros.get(row.fantasypros_id) as { id: string } | undefined;
+			if (!player) {
+				const team = normalizeTeam(row.team);
+				const matches = byNameTeam.all(normalizePlayerName(row.player_name), team, team) as { id: string }[];
+				if (matches.length === 1) player = matches[0];
+			}
+			if (!player) continue;
+			insert.run(player.id, seasonYear, 'PPR', weeklySource, number(row.ecr), number(String(row.pos_rank ?? '').replace(/\D/g, '')),
+				number(row.r2p_pts), JSON.stringify({ opponent: row.player_opponent ?? null, opponentId: row.player_opponent_id ?? null,
+					grade: row.start_sit_grade ?? null, uncertainty: number(row.sd), best: number(row.best), worst: number(row.worst),
+					recommendation: row.recommendation ?? null, note: row.note ?? null, scrapeDate, attribution: 'FantasyPros weekly ECR via DynastyProcess open data' }), fetchedAt);
+			imported++;
+		}
+		db.prepare(`INSERT INTO provider_cache(key,value_json,expires_at,updated_at) VALUES('player-source:weekly-consensus',?,?,?)
+			ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,expires_at=excluded.expires_at,updated_at=excluded.updated_at`)
+			.run(JSON.stringify({ source: weeklySource, seasonYear, scrapeDate, rows: rows.length, imported }), new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), fetchedAt);
+	})();
+	return { source: weeklySource, seasonYear, scrapeDate, rows: rows.length, imported, fetchedAt };
+}
+
+export function weeklyConsensusRankingStatus() {
+	const row = getDatabase().prepare("SELECT value_json,expires_at,updated_at FROM provider_cache WHERE key='player-source:weekly-consensus'").get() as any;
 	return row ? { ...JSON.parse(row.value_json), updatedAt: row.updated_at, expiresAt: row.expires_at, stale: !row.expires_at || new Date(row.expires_at) <= new Date() } : null;
 }
 
