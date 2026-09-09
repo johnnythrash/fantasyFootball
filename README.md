@@ -144,7 +144,7 @@ Backup APIs:
 - ESPN does not provide a supported public live-draft API. Synchronization therefore depends on the draft room's Pick History DOM, with raw captures retained for diagnosis.
 - Exact scoring and lineup settings require league import; live draft URLs alone identify the league and user team but do not contain full settings.
 - In-season ESPN refresh requires the encrypted credentials saved during league import; ESPN weekly projections are currently the primary start/sit input.
-- Sleeper start/sit rescales available ESPN weekly stat-line projections under the imported Sleeper scoring rules, then falls back to consensus rank and injury status when a player has no matched projection. Coverage is shown in the UI and close calls with missing projections should be treated as provisional.
+- Sleeper start/sit imports the broader authenticated ESPN weekly player pool, rescales available offensive stat lines under the imported Sleeper scoring rules, uses an ESPN weekly scoring proxy for defenses, then falls back to consensus rank and injury status when no matched projection exists. Coverage is shown in the UI and close calls with missing projections should be treated as provisional.
 - The bundled cross-provider identity catalog is useful for ID reconciliation but is not itself a current ranking or projection source.
 - Some 2026 rookies and defenses need newer provider identity mappings.
 - The league page still has several non-blocking accessibility warnings.

@@ -26,6 +26,10 @@ export const load = (async ({ params }) => {
 		JOIN projection_sets ps ON ps.id=pp.projection_set_id
 		WHERE pp.player_id=? AND ps.source='espn-weekly-proxy' AND ps.season_year=?
 		AND CAST(json_extract(ps.metadata_json,'$.week') AS INTEGER)=? ORDER BY ps.imported_at DESC LIMIT 1`);
+	const weeklyDefenseProjection = db.prepare(`SELECT pp.projected_points,pp.stats_json,ps.imported_at FROM player_projections pp
+		JOIN projection_sets ps ON ps.id=pp.projection_set_id JOIN players p ON p.id=pp.player_id
+		WHERE p.nfl_team=? AND p.position IN ('DST','DEF') AND ps.source='espn-weekly-proxy' AND ps.season_year=?
+		AND CAST(json_extract(ps.metadata_json,'$.week') AS INTEGER)=? ORDER BY ps.imported_at DESC LIMIT 1`);
 	const rosters = teams.map((team) => {
 		const liveEntries = Array.isArray(team.data?.roster_entries) ? team.data.roster_entries : [];
 		const draftedPlayers = picks.filter((pick) => String(pick.team_id) === String(team.espn_team_id)).map((pick) => {
@@ -41,14 +45,16 @@ export const load = (async ({ params }) => {
 				const playerId = String(entry.playerId ?? '');
 				const row = sleeperValue.get(league.season_year, playerId) as any;
 				if (!row?.full_name) return null;
-				const projection = weeklyProjection.get(row.id, league.season_year, scoringPeriod) as any;
-				const projected = scoreSleeperProjection(projection?.stats_json, league.settings?.scoring_settings);
+				const isDefense = ['DST', 'DEF'].includes(String(row.position));
+				const projection = (isDefense ? weeklyDefenseProjection.get(row.nfl_team, league.season_year, scoringPeriod) : weeklyProjection.get(row.id, league.season_year, scoringPeriod)) as any;
+				const defensePoints = finite(projection?.projected_points);
+				const projected = isDefense ? (defensePoints == null ? null : round(defensePoints)) : scoreSleeperProjection(projection?.stats_json, league.settings?.scoring_settings);
 				return { id: row.id, sleeperId: playerId, espnId: `sleeper:${playerId}`, name: row.full_name,
 					position: row.position === 'DEF' ? 'DST' : row.position, nflTeam: row.nfl_team, byeWeek: row.bye_week ?? null,
 					rank: Number(row.overall_rank) || null, positionRank: Number(row.position_rank) || null,
 					injuryStatus: row.injury_status ?? null, pickNumber: null, round: null,
 					lineupSlotId: entry.isStarter ? 0 : entry.isReserve ? 21 : 20,
-					weeklyProjected: projected, seasonProjected: null, projectionSource: projected != null ? 'ESPN stat-line proxy' : null };
+					weeklyProjected: projected, seasonProjected: null, projectionSource: projected != null ? (isDefense ? 'ESPN defense proxy' : 'ESPN stat-line proxy') : null };
 			}
 			const espnPlayer = entry?.player;
 			if (!espnPlayer?.id || !espnPlayer.fullName) return null;
