@@ -150,7 +150,8 @@ function compactRosterEntry(entry: any) {
 			injured: player.injured ?? false, injuryStatus: player.injuryStatus ?? null,
 			stats: (player.stats ?? []).map((stat: any) => ({ appliedTotal: stat.appliedTotal ?? null,
 				externalId: stat.externalId ?? null, scoringPeriodId: stat.scoringPeriodId ?? null,
-				statSourceId: stat.statSourceId ?? null, statSplitTypeId: stat.statSplitTypeId ?? null }))
+				statSourceId: stat.statSourceId ?? null, statSplitTypeId: stat.statSplitTypeId ?? null,
+				stats: stat.stats ?? null }))
 		} : null
 	};
 }

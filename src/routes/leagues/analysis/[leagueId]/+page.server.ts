@@ -22,6 +22,10 @@ export const load = (async ({ params }) => {
 		v.overall_rank,v.position_rank,s.injury_status FROM players p
 		LEFT JOIN player_values v ON v.player_id=p.id AND v.season_year=? AND v.scoring_format='PPR' AND v.source='fantasypros-ecr-via-dynastyprocess'
 		LEFT JOIN player_status s ON s.player_id=p.id WHERE p.sleeper_id=?`);
+	const weeklyProjection = db.prepare(`SELECT pp.projected_points,pp.stats_json,ps.imported_at FROM player_projections pp
+		JOIN projection_sets ps ON ps.id=pp.projection_set_id
+		WHERE pp.player_id=? AND ps.source='espn-weekly-proxy' AND ps.season_year=?
+		AND CAST(json_extract(ps.metadata_json,'$.week') AS INTEGER)=? ORDER BY ps.imported_at DESC LIMIT 1`);
 	const rosters = teams.map((team) => {
 		const liveEntries = Array.isArray(team.data?.roster_entries) ? team.data.roster_entries : [];
 		const draftedPlayers = picks.filter((pick) => String(pick.team_id) === String(team.espn_team_id)).map((pick) => {
@@ -37,12 +41,14 @@ export const load = (async ({ params }) => {
 				const playerId = String(entry.playerId ?? '');
 				const row = sleeperValue.get(league.season_year, playerId) as any;
 				if (!row?.full_name) return null;
+				const projection = weeklyProjection.get(row.id, league.season_year, scoringPeriod) as any;
+				const projected = scoreSleeperProjection(projection?.stats_json, league.settings?.scoring_settings);
 				return { id: row.id, sleeperId: playerId, espnId: `sleeper:${playerId}`, name: row.full_name,
 					position: row.position === 'DEF' ? 'DST' : row.position, nflTeam: row.nfl_team, byeWeek: row.bye_week ?? null,
 					rank: Number(row.overall_rank) || null, positionRank: Number(row.position_rank) || null,
 					injuryStatus: row.injury_status ?? null, pickNumber: null, round: null,
 					lineupSlotId: entry.isStarter ? 0 : entry.isReserve ? 21 : 20,
-					weeklyProjected: null, seasonProjected: null };
+					weeklyProjected: projected, seasonProjected: null, projectionSource: projected != null ? 'ESPN stat-line proxy' : null };
 			}
 			const espnPlayer = entry?.player;
 			if (!espnPlayer?.id || !espnPlayer.fullName) return null;
@@ -86,10 +92,16 @@ export const load = (async ({ params }) => {
 		start: (user?.starters ?? []).filter((player: any) => !currentIds.has(player.espnId)),
 		sit: (user?.currentStarters ?? []).filter((player: any) => !recommendedIds.has(player.espnId))
 	};
+	const projectionCoverage = {
+		projected: (user?.players ?? []).filter((player: any) => player.weeklyProjected != null).length,
+		total: (user?.players ?? []).length
+	};
 	return { league: { id: league.id, name: league.name, platform: league.platform, seasonYear: league.season_year, teamCount: league.team_count },
-		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, tradeTargets, startSit, scoringPeriod,
-		methodology: user?.players.some((player: any) => player.weeklyProjected != null)
-			? `Live ESPN rosters and Week ${scoringPeriod} projections under your league scoring, with current injuries and consensus depth.`
+		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, tradeTargets, startSit, scoringPeriod, projectionCoverage,
+		methodology: projectionCoverage.projected > 0
+			? league.platform === 'SLEEPER'
+				? `Live Sleeper rosters with ESPN Week ${scoringPeriod} stat-line projections rescored under this league's settings, plus current injuries and consensus fallback.`
+				: `Live ESPN rosters and Week ${scoringPeriod} projections under your league scoring, with current injuries and consensus depth.`
 			: `${league.platform === 'SLEEPER' ? 'Live Sleeper rosters' : 'Draft-value baseline'} using current consensus rank, current injuries, likely starters, and shallow bench depth; weekly point projections are not yet available for this league.` };
 }) satisfies PageServerLoad;
 
@@ -128,3 +140,22 @@ function byWeeklyThenRank(a: any, b: any) {
 function finite(value: unknown) { return value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value); }
 function average(values: number[]) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0; }
 function round(value: number) { return Math.round(value * 10) / 10; }
+
+const sleeperStatKeys: Record<string, string> = {
+	'3': 'pass_yd', '4': 'pass_td', '19': 'pass_2pt', '20': 'pass_int',
+	'24': 'rush_yd', '25': 'rush_td', '26': 'rush_2pt', '42': 'rec_yd',
+	'43': 'rec_td', '44': 'rec_2pt', '53': 'rec', '72': 'fum_lost'
+};
+function scoreSleeperProjection(statsJson: string | null | undefined, scoring: Record<string, number> | null | undefined) {
+	if (!statsJson || !scoring) return null;
+	try {
+		const stats = JSON.parse(statsJson)?.espnStats ?? {};
+		let total = 0; let matched = 0;
+		for (const [espnId, sleeperKey] of Object.entries(sleeperStatKeys)) {
+			const stat = Number(stats[espnId]); const multiplier = Number(scoring[sleeperKey]);
+			if (!Number.isFinite(stat) || !Number.isFinite(multiplier)) continue;
+			total += stat * multiplier; matched++;
+		}
+		return matched ? round(total) : null;
+	} catch { return null; }
+}

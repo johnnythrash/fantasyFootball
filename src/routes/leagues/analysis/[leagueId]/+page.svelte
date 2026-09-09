@@ -4,6 +4,7 @@
 	let { data }: { data: PageData } = $props();
 	let refreshing = $state(false);
 	let refreshMessage = $state('');
+	let selectedPlayer = $state<any>(null);
 	const isSleeper = $derived(data.league.platform === 'SLEEPER');
 	async function refreshLeague() {
 		if (isSleeper) return;
@@ -21,7 +22,7 @@
 
 <svelte:head><title>{data.league.name} analysis</title></svelte:head>
 
-<main class="min-h-screen bg-[#f6f7f9] px-4 py-8 text-slate-950 sm:px-8">
+<main class="dark-shell min-h-screen px-4 py-8 sm:px-8">
 	<div class="mx-auto max-w-7xl">
 		<header class="border-b border-slate-300 pb-7">
 			<div class="flex flex-wrap items-start justify-between gap-5">
@@ -34,7 +35,7 @@
 			{#if refreshMessage}<p class="mt-4 border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">{refreshMessage}</p>{/if}
 		</header>
 
-		{#if isSleeper}<div class="mt-6 border-l-4 border-amber-500 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950"><strong>Sleeper lineup data is live.</strong> Submitted starters, roster slots, and injuries are current. Close calls currently use consensus value while weekly projections and matchup adjustments are being connected.</div>{/if}
+		{#if isSleeper}<div class="mt-6 border-l-4 border-amber-500 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950"><strong>Sleeper lineup data is live.</strong> {data.projectionCoverage.projected} of {data.projectionCoverage.total} roster players have ESPN weekly stat lines rescored for this league. Players without one use consensus rank as a fallback.</div>{/if}
 
 		{#if data.user}<section class="grid gap-8 border-b border-slate-300 py-8 lg:grid-cols-[230px_1fr]">
 			<div><p class="text-xs font-black uppercase tracking-widest text-slate-500">Your power rank</p><p class="mt-1 text-6xl font-black">#{data.user.powerRank}<span class="ml-2 text-lg font-semibold text-slate-400">/ {data.league.teamCount}</span></p>{#if data.user.weeklyTotal > 0}<p class="mt-2 font-semibold text-slate-600">{data.user.weeklyTotal} projected points</p>{/if}</div>
@@ -47,8 +48,38 @@
 			<div class="mt-6 overflow-x-auto"><table class="w-full text-left"><thead class="border-b-2 border-slate-900 text-xs uppercase tracking-wider text-slate-500"><tr><th class="py-3">Position</th><th class="py-3">Player</th><th class="py-3">Team</th><th class="py-3">Projection</th><th class="py-3">Status</th></tr></thead><tbody>{#each data.user?.starters ?? [] as player}<tr class="border-b border-slate-200"><td class="py-3 font-black">{player.position}</td><td class="py-3 font-bold">{player.name}</td><td class="py-3 text-slate-500">{player.nflTeam ?? '—'}</td><td class="py-3 text-slate-500">{player.weeklyProjected != null ? `${player.weeklyProjected} pts` : '—'}</td><td class="py-3"><span class:font-bold={player.injuryStatus && !['NA', 'ACTIVE'].includes(String(player.injuryStatus).toUpperCase())} class:text-amber-700={player.injuryStatus && !['NA', 'ACTIVE'].includes(String(player.injuryStatus).toUpperCase())}>{player.injuryStatus && player.injuryStatus !== 'ACTIVE' ? player.injuryStatus : 'Available'}</span></td></tr>{/each}</tbody></table></div>
 		</section>
 
+		<section class="border-b border-slate-300 py-8">
+			<div class="mb-5 flex items-end justify-between gap-4"><div><p class="text-xs font-black uppercase tracking-widest text-slate-500">Player explorer</p><h2 class="mt-1 text-3xl font-black">Your roster</h2></div><p class="text-sm text-slate-500">Select a player for details</p></div>
+			<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{#each data.user?.players ?? [] as player}<button type="button" onclick={() => selectedPlayer = player} class="player-button flex items-center justify-between rounded-lg border border-slate-300 bg-white px-4 py-3 text-left"><span><strong class="block">{player.name}</strong><span class="text-sm text-slate-500">{player.position} · {player.nflTeam ?? 'FA'}</span></span><span class="text-xl text-slate-500">›</span></button>{/each}</div>
+		</section>
+
 		<section class="border-b border-slate-300 py-8"><p class="text-xs font-black uppercase tracking-widest text-slate-500">League comparison</p><h2 class="mt-1 text-3xl font-black">Power rankings</h2><div class="mt-5 overflow-x-auto"><table class="w-full text-left"><thead class="border-b-2 border-slate-900 text-xs uppercase tracking-wider text-slate-500"><tr><th class="py-3">Rank</th><th class="py-3">Team</th><th class="py-3">Model</th><th class="py-3">Projected core</th></tr></thead><tbody>{#each data.powerRankings as team}<tr class="border-b border-slate-200" class:bg-emerald-50={team.is_user && isSleeper} class:bg-blue-50={team.is_user && !isSleeper}><td class="py-3 text-xl font-black">#{team.powerRank}</td><td class="py-3"><span class="font-bold">{team.team_name}</span>{#if team.is_user}<span class="ml-2 text-xs font-black uppercase text-slate-500">You</span>{/if}</td><td class="py-3 font-semibold">{team.weeklyTotal > 0 ? `${team.weeklyTotal} pts` : 'Rank model'}</td><td class="py-3 text-sm text-slate-600">{team.starters.slice(0, 5).map((player) => player.name).join(' · ')}</td></tr>{/each}</tbody></table></div></section>
 
 		<section class="py-8"><p class="text-xs font-black uppercase tracking-widest text-slate-500">Roster market</p><h2 class="mt-1 text-3xl font-black">Trade-fit watchlist</h2><p class="mt-2 text-sm text-slate-500">Potential roster fits only—not clickable offers and not a fairness recommendation.</p>{#if data.tradeTargets.length}<div class="mt-5 grid gap-x-10 gap-y-5 md:grid-cols-2">{#each data.tradeTargets as player}<article class="border-t border-slate-300 pt-4"><div class="flex items-baseline justify-between gap-3"><h3 class="text-lg font-black">{player.name}</h3><span class="text-sm font-bold text-slate-500">{player.position} · {player.nflTeam}</span></div><p class="mt-1 text-sm text-slate-600">{player.fromTeam} · ECR {player.rank ?? '—'}</p><p class="mt-2 text-xs leading-5 text-slate-500">{player.reason}</p></article>{/each}</div>{:else}<p class="mt-5 text-slate-600">No clear surplus-for-need matches yet.</p>{/if}</section>
 	</div>
+	{#if selectedPlayer}<div class="fixed inset-0 z-50 flex items-end justify-end bg-black/70 p-4 sm:p-8" role="presentation" onclick={(event) => event.currentTarget === event.target && (selectedPlayer = null)}><aside class="detail-panel max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 p-6" aria-label={`${selectedPlayer.name} details`}><div class="flex items-start justify-between gap-4"><div><p class="text-xs font-black uppercase tracking-widest text-emerald-400">Player details</p><h2 class="mt-1 text-2xl font-black">{selectedPlayer.name}</h2><p class="mt-1 text-slate-400">{selectedPlayer.position} · {selectedPlayer.nflTeam ?? 'Free agent'}</p></div><button type="button" onclick={() => selectedPlayer = null} class="rounded-lg border border-slate-600 px-3 py-2 font-bold text-slate-200">Close</button></div><dl class="mt-8 grid grid-cols-2 gap-x-6 gap-y-5"><div><dt>Week {data.scoringPeriod}</dt><dd>{selectedPlayer.weeklyProjected != null ? `${selectedPlayer.weeklyProjected} pts` : 'No projection'}</dd></div><div><dt>Projection source</dt><dd>{selectedPlayer.projectionSource ?? (isSleeper ? 'Consensus fallback' : 'ESPN')}</dd></div><div><dt>Consensus rank</dt><dd>{selectedPlayer.rank ?? '—'}</dd></div><div><dt>Position rank</dt><dd>{selectedPlayer.positionRank ?? '—'}</dd></div><div><dt>Injury status</dt><dd>{selectedPlayer.injuryStatus && selectedPlayer.injuryStatus !== 'ACTIVE' ? selectedPlayer.injuryStatus : 'Available'}</dd></div><div><dt>Bye week</dt><dd>{selectedPlayer.byeWeek ?? '—'}</dd></div><div><dt>Current lineup</dt><dd>{selectedPlayer.lineupSlotId === 20 ? 'Bench' : selectedPlayer.lineupSlotId === 21 ? 'Reserve/IR' : 'Starter'}</dd></div><div><dt>Season projection</dt><dd>{selectedPlayer.seasonProjected != null ? `${selectedPlayer.seasonProjected} pts` : '—'}</dd></div></dl></aside></div>{/if}
 </main>
+
+<style>
+	.dark-shell { background: #070b12; color: #edf2f8; }
+	.dark-shell :global(.bg-white) { background: #111824; }
+	.dark-shell :global(.text-slate-950) { color: #f8fafc; }
+	.dark-shell :global(.text-slate-600) { color: #aab7c7; }
+	.dark-shell :global(.text-slate-500), .dark-shell :global(.text-slate-400) { color: #8492a6; }
+	.dark-shell :global(.border-slate-300), .dark-shell :global(.border-slate-200), .dark-shell :global(.border-slate-900) { border-color: #2b3646; }
+	.dark-shell :global(.bg-emerald-50) { background: #0d2a23; }
+	.dark-shell :global(.bg-blue-50) { background: #10233f; }
+	.dark-shell :global(.bg-amber-50) { background: #2b210d; }
+	.dark-shell :global(.text-amber-950), .dark-shell :global(.text-amber-900) { color: #f8dda0; }
+	.dark-shell :global(.text-emerald-950), .dark-shell :global(.text-emerald-900) { color: #b7f7dc; }
+	.dark-shell :global(h1) { font-size: 2rem; line-height: 1.15; }
+	.dark-shell :global(h2) { font-size: 1.5rem; line-height: 1.25; }
+	.dark-shell :global(.text-xs) { font-size: .78rem; }
+	.dark-shell :global(.text-sm) { font-size: .925rem; }
+	.player-button { cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+	.player-button:hover { background: #182334; border-color: #33d69f; transform: translateY(-1px); }
+	.player-button:focus-visible { outline: 3px solid #33d69f; outline-offset: 2px; }
+	.detail-panel { background: #101722; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+	dt { color: #8492a6; font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+	dd { margin-top: .3rem; font-size: 1rem; font-weight: 750; color: #f8fafc; }
+</style>
