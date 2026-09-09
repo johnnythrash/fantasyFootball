@@ -5,6 +5,7 @@
 	let refreshing = $state(false);
 	let refreshMessage = $state('');
 	async function refreshLeague() {
+		if (data.league.platform !== 'ESPN') return;
 		refreshing = true; refreshMessage = '';
 		try {
 			const response = await fetch(`/api/espn/leagues/${data.league.id}/refresh`, { method: 'POST' });
@@ -23,9 +24,10 @@
 	<div class="mx-auto max-w-7xl space-y-8">
 		<header class="flex flex-wrap items-end justify-between gap-4">
 			<div><p class="text-sm font-bold uppercase tracking-widest text-blue-600">{data.league.seasonYear} season hub</p><h1 class="text-4xl font-black">{data.league.name}</h1><p class="mt-2 max-w-3xl text-slate-600">{data.methodology}</p></div>
-			<div class="flex items-center gap-3"><button type="button" onclick={refreshLeague} disabled={refreshing} class="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white disabled:opacity-50">{refreshing ? 'Refreshing…' : 'Refresh ESPN'}</button><a href="/leagues" class="rounded-xl border border-slate-300 bg-white px-4 py-2 font-semibold shadow-sm">Back to leagues</a></div>
+			<div class="flex items-center gap-3">{#if data.league.platform === 'ESPN'}<button type="button" onclick={refreshLeague} disabled={refreshing} class="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white disabled:opacity-50">{refreshing ? 'Refreshing…' : 'Refresh ESPN'}</button>{/if}<a href="/leagues" class="rounded-xl border border-slate-300 bg-white px-4 py-2 font-semibold shadow-sm">Back to leagues</a></div>
 		</header>
 		{#if refreshMessage}<p class="rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">{refreshMessage}</p>{/if}
+		{#if data.league.platform === 'SLEEPER'}<p class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Sleeper rosters and submitted starters are live. Advice currently uses consensus rank plus injury status; close calls need weekly projection and matchup context before kickoff.</p>{/if}
 
 		{#if data.user}
 			<section class="grid gap-4 md:grid-cols-3">

@@ -19,9 +19,10 @@ Local-first fantasy football tooling focused first on reliable ESPN live-draft s
 - AES-256-GCM encryption for stored ESPN credentials with a separate local key
 - Live dashboard with receiver health, recent picks, team rosters, draft completion, available-player search, and identity diagnostics
 - Automatic ESPN user-team, draft-slot, roster-construction, and next-turn detection
-- ESPN and Sleeper league-history import foundations
+- ESPN and Sleeper league import, including importing every current-season Sleeper league for a username
 - Current-season ESPN league import with encrypted credentials, exact settings, teams, and all draft picks
 - One-click authenticated ESPN league refresh with current rosters, lineup slots, injuries, schedule, and weekly/full-season projections
+- Current Sleeper rosters, submitted starters, reserve status, matchup data, scoring settings, and lineup configuration
 - League season hub with week-specific start/sit optimization, projected weekly power rankings, position comparison, and current-roster trade-fit targets
 - Local database backup and restore endpoints
 - Manual daily refresh of current player positions, teams, injury/practice status, depth-chart order, and add/drop trends through Sleeper's official read-only API
@@ -143,6 +144,7 @@ Backup APIs:
 - ESPN does not provide a supported public live-draft API. Synchronization therefore depends on the draft room's Pick History DOM, with raw captures retained for diagnosis.
 - Exact scoring and lineup settings require league import; live draft URLs alone identify the league and user team but do not contain full settings.
 - In-season ESPN refresh requires the encrypted credentials saved during league import; ESPN weekly projections are currently the primary start/sit input.
+- Sleeper start/sit currently falls back to consensus rank and injury status because Sleeper's documented API does not publish weekly projections; close calls should be treated as provisional.
 - The bundled cross-provider identity catalog is useful for ID reconciliation but is not itself a current ranking or projection source.
 - Some 2026 rookies and defenses need newer provider identity mappings.
 - The league page still has several non-blocking accessibility warnings.

@@ -18,6 +18,10 @@ export const load = (async ({ params }) => {
 		v.overall_rank,v.position_rank,s.injury_status FROM players p
 		LEFT JOIN player_values v ON v.player_id=p.id AND v.season_year=? AND v.scoring_format='PPR' AND v.source='fantasypros-ecr-via-dynastyprocess'
 		LEFT JOIN player_status s ON s.player_id=p.id WHERE p.espn_id=?`);
+	const sleeperValue = db.prepare(`SELECT p.id,p.sleeper_id,p.full_name,p.position,p.nfl_team,p.bye_week,
+		v.overall_rank,v.position_rank,s.injury_status FROM players p
+		LEFT JOIN player_values v ON v.player_id=p.id AND v.season_year=? AND v.scoring_format='PPR' AND v.source='fantasypros-ecr-via-dynastyprocess'
+		LEFT JOIN player_status s ON s.player_id=p.id WHERE p.sleeper_id=?`);
 	const rosters = teams.map((team) => {
 		const liveEntries = Array.isArray(team.data?.roster_entries) ? team.data.roster_entries : [];
 		const draftedPlayers = picks.filter((pick) => String(pick.team_id) === String(team.espn_team_id)).map((pick) => {
@@ -29,6 +33,17 @@ export const load = (async ({ params }) => {
 				pickNumber: pick.pick_number, round: pick.round_number, lineupSlotId: null, weeklyProjected: null, seasonProjected: null };
 		});
 		const livePlayers = liveEntries.map((entry: any) => {
+			if (league.platform === 'SLEEPER') {
+				const playerId = String(entry.playerId ?? '');
+				const row = sleeperValue.get(league.season_year, playerId) as any;
+				if (!row?.full_name) return null;
+				return { id: row.id, sleeperId: playerId, espnId: `sleeper:${playerId}`, name: row.full_name,
+					position: row.position, nflTeam: row.nfl_team, byeWeek: row.bye_week ?? null,
+					rank: Number(row.overall_rank) || null, positionRank: Number(row.position_rank) || null,
+					injuryStatus: row.injury_status ?? null, pickNumber: null, round: null,
+					lineupSlotId: entry.isStarter ? 0 : entry.isReserve ? 21 : 20,
+					weeklyProjected: null, seasonProjected: null };
+			}
 			const espnPlayer = entry?.player;
 			if (!espnPlayer?.id || !espnPlayer.fullName) return null;
 			const row = value.get(league.season_year, String(espnPlayer.id)) as any;
@@ -71,11 +86,11 @@ export const load = (async ({ params }) => {
 		start: (user?.starters ?? []).filter((player: any) => !currentIds.has(player.espnId)),
 		sit: (user?.currentStarters ?? []).filter((player: any) => !recommendedIds.has(player.espnId))
 	};
-	return { league: { id: league.id, name: league.name, seasonYear: league.season_year, teamCount: league.team_count },
+	return { league: { id: league.id, name: league.name, platform: league.platform, seasonYear: league.season_year, teamCount: league.team_count },
 		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, tradeTargets, startSit, scoringPeriod,
 		methodology: user?.players.some((player: any) => player.weeklyProjected != null)
 			? `Live ESPN rosters and Week ${scoringPeriod} projections under your league scoring, with current injuries and consensus depth.`
-			: 'Draft-value baseline using current consensus rank, likely starters, and shallow bench depth.' };
+			: `${league.platform === 'SLEEPER' ? 'Live Sleeper rosters' : 'Draft-value baseline'} using current consensus rank, current injuries, likely starters, and shallow bench depth; weekly point projections are not yet available for this league.` };
 }) satisfies PageServerLoad;
 
 function chooseStarters(players: any[]) {

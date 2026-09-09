@@ -59,6 +59,9 @@ export type SleeperLeague = {
 	total_rosters: number;
 	draft_id?: string | null;
 	settings?: LeagueSettings;
+	scoring_settings?: Record<string, number>;
+	roster_positions?: string[];
+	status?: string;
 };
 export type SleeperUserInLeague = {
 	user_id: string;
@@ -70,6 +73,9 @@ export type SleeperRoster = {
 	roster_id: number;
 	owner_id?: string | null;
 	draft_slot?: number | null;
+	players?: string[] | null;
+	starters?: string[] | null;
+	reserve?: string[] | null;
 };
 export interface SleeperPick {
 	pick_no: number; // pick within the round

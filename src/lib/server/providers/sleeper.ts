@@ -52,6 +52,15 @@ type PickNormalized = {
 };
 
 export const sleeper = {
+	async listUserLeagues({ username, season }: { username: string; season: number }) {
+		const uRes = await api(`/v1/user/${encodeURIComponent(username)}`);
+		if (!uRes.ok) throw new Error(`Sleeper: user lookup failed (${uRes.status})`);
+		const user = (await uRes.json()) as SleeperUser;
+		if (!user?.user_id) throw new Error('Sleeper: user not found');
+		const response = await api(`/v1/user/${user.user_id}/leagues/nfl/${season}`);
+		if (!response.ok) throw new Error(`Sleeper: leagues fetch failed (${response.status})`);
+		return { user, leagues: (await response.json()) as SleeperLeague[] };
+	},
 	async fetchSeason({
 		username,
 		season,
@@ -171,11 +180,19 @@ export const sleeper = {
 		const nameByUser: Record<string, string> = {};
 		for (const usr of users) nameByUser[usr.user_id] = usr.display_name || usr.username || '';
 
+		const stateRes = await api('/v1/state/nfl');
+		const state = stateRes.ok ? await stateRes.json() as Record<string, unknown> : {};
+		const scoringPeriod = Number(state.week ?? state.display_week ?? 1) || 1;
+		const matchupRes = await api(`/v1/league/${league.league_id}/matchups/${scoringPeriod}`);
+		const matchups = matchupRes.ok ? await matchupRes.json() as Array<Record<string, unknown>> : [];
+		const matchupByRoster = new Map(matchups.map((matchup) => [Number(matchup.roster_id), matchup]));
 		const teams = rosters.map((r) => ({
 			sleeper_roster_id: r.roster_id,
-			team_name: nameByUser[r.owner_id || ''] || `Roster ${r.roster_id}`,
+			team_name: String(users.find((user) => user.user_id === r.owner_id)?.metadata?.team_name || nameByUser[r.owner_id || ''] || `Roster ${r.roster_id}`),
 			owner_name: nameByUser[r.owner_id || ''] || 'Unknown Owner',
-			draft_position: r.draft_slot ?? null
+			draft_position: r.draft_slot ?? null,
+			roster_entries: (r.players ?? []).map((playerId) => ({ playerId: String(playerId), isStarter: (r.starters ?? []).includes(playerId), isReserve: (r.reserve ?? []).includes(playerId) })),
+			matchup: matchupByRoster.get(r.roster_id) ?? null
 		}));
 
 		// league row
@@ -188,7 +205,7 @@ export const sleeper = {
 			draft_type: 'SNAKE',
 			draft_started: Boolean(draftId && rawPicks.length > 0),
 			draft_completed: Boolean(draftId && rawPicks.length > 0),
-			settings: { sleeper_data: league, last_synced: new Date().toISOString() },
+			settings: { sleeper_data: league, scoring_period_id: scoringPeriod, scoring_settings: league.scoring_settings ?? {}, roster_positions: league.roster_positions ?? [], last_synced: new Date().toISOString() },
 			updated_at: new Date().toISOString()
 		};
 

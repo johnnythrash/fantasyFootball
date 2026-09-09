@@ -13,9 +13,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	const results = [];
 	for (const season of seasons) {
 		try {
+			const targets = platform === 'SLEEPER' && !body.leagueId
+				? (await sleeper.listUserLeagues({ username: String(body.username ?? ''), season })).leagues.map((league) => league.league_id)
+				: [body.leagueId ? String(body.leagueId) : undefined];
+			if (!targets.length) throw new Error(`Sleeper: no leagues for ${body.username} in ${season}`);
+			for (const targetLeagueId of targets) {
 			const fetched: any = platform === 'ESPN'
-				? await espn.fetchSeason({ leagueId: String(body.leagueId ?? '').trim(), season, auth: espnAuth! })
-				: await sleeper.fetchSeason({ username: String(body.username ?? ''), season, leagueId: body.leagueId ? String(body.leagueId) : undefined });
+				? await espn.fetchSeason({ leagueId: String(targetLeagueId ?? '').trim(), season, auth: espnAuth! })
+				: await sleeper.fetchSeason({ username: String(body.username ?? ''), season, leagueId: targetLeagueId });
 			const league = fetched.league;
 			const externalId = String(league.platform_league_id ?? league.espn_league_id ?? body.leagueId ?? '');
 			if (!externalId) throw new Error('Provider did not return a league id');
@@ -36,6 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				position: pick.player_position, nflTeam: pick.player_nfl_team, data: pick.player_data
 			})));
 			results.push({ season, ok: true, league_id: id, teams: fetched.teams.length, picks: fetched.picks.length });
+			}
 		} catch (cause) {
 			results.push({ season, ok: false, error: cause instanceof Error ? cause.message : 'Import failed' });
 		}
