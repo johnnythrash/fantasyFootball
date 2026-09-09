@@ -7,6 +7,7 @@ import { mflAdpStatus, refreshMflAdp } from '$lib/server/player-sources/adp';
 import { importProjectionCsv } from '$lib/server/player-sources/projections';
 import { historicalInjuryStatus, refreshHistoricalInjuries } from '$lib/server/player-sources/injury-history';
 import { projectionFilename } from './data-refresh-utils.js';
+import { runKickoffRefreshCheck } from '$lib/server/kickoff-refresh';
 
 export { projectionFilename } from './data-refresh-utils.js';
 
@@ -22,7 +23,9 @@ export function startDataRefreshScheduler() {
 	schedulerStarted = true;
 	mkdirSync(archiveDirectory, { recursive: true });
 	setTimeout(() => void refreshPlayerData({ force: false }).catch(() => {}), 750).unref?.();
+	setTimeout(() => void runKickoffRefreshCheck(() => refreshPlayerData({ force: true })).catch(() => {}), 1500).unref?.();
 	setInterval(() => void refreshPlayerData({ force: false }).catch(() => {}), 15 * 60 * 1000).unref?.();
+	setInterval(() => void runKickoffRefreshCheck(() => refreshPlayerData({ force: true })).catch(() => {}), 60 * 1000).unref?.();
 }
 
 export async function refreshPlayerData(options: { force?: boolean; teamCount?: number } = {}) {

@@ -25,6 +25,7 @@ Local-first fantasy football tooling focused first on reliable ESPN live-draft s
 - Current Sleeper rosters, submitted starters, reserve status, matchup data, scoring settings, and lineup configuration
 - Dark, interactive league season hub with player detail cards, week-specific start/sit optimization, projected weekly power rankings, position comparison, and current-roster trade-fit targets
 - Automated weekly consensus import with opponent, weekly/position ECR, expert spread, start/sit grade, and matchup outlook; close or source-conflicted lineup changes are shown as holds instead of forced recommendations
+- Kickoff-aware local refresh scheduler using the current NFL schedule: refresh checkpoints at 24 hours, 3 hours, 90 minutes, 30 minutes, and 10 minutes before each game, plus an hourly pregame startup check; imported ESPN and Sleeper rosters are refreshed and started games are marked locked
 - Local database backup and restore endpoints
 - Manual daily refresh of current player positions, teams, injury/practice status, depth-chart order, and add/drop trends through Sleeper's official read-only API
 - Locally cached 2009–2024 nflverse injury-report history with recent recurrence and missed-game risk

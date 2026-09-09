@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getDatabase } from '$lib/server/db/database';
 import { getLeague, getLeaguePicks, getLeagueTeams } from '$lib/server/db/repositories';
 import { getNFLTeamName, getPositionName } from '$lib/server/draft/utils';
+import { kickoffScheduleStatus } from '$lib/server/kickoff-refresh';
 
 const starterNeeds: Record<string, number> = { QB: 1, RB: 2, WR: 2, TE: 1, DST: 1, K: 1 };
 const tradeDepth: Record<string, number> = { QB: 1, RB: 3, WR: 3, TE: 1 };
@@ -14,6 +15,14 @@ export const load = (async ({ params }) => {
 	const picks = getLeaguePicks(params.leagueId);
 	const scoringPeriod = Number(league.settings?.scoring_period_id ?? league.settings?.espn_status?.currentMatchupPeriod) || 1;
 	const db = getDatabase();
+	const kickoffSchedule: any = kickoffScheduleStatus();
+	const gameByTeam = new Map<string, any>();
+	for (const game of kickoffSchedule?.games ?? []) for (const team of game.teams ?? []) gameByTeam.set(String(team), game);
+	const gameContext = (team: string | null | undefined) => {
+		const game = team ? gameByTeam.get(String(team)) : null;
+		return { kickoffAt: game?.kickoffAt ?? null, gameStatus: game?.status ?? null,
+			lineupLocked: game ? game.status !== 'pre' || new Date(game.kickoffAt).getTime() <= Date.now() : false };
+	};
 	const value = db.prepare(`SELECT p.id,p.espn_id,p.full_name,p.position,p.nfl_team,p.bye_week,
 		v.overall_rank,v.position_rank,s.injury_status FROM players p
 		LEFT JOIN player_values v ON v.player_id=p.id AND v.season_year=? AND v.scoring_format='PPR' AND v.source='fantasypros-ecr-via-dynastyprocess'
@@ -63,7 +72,8 @@ export const load = (async ({ params }) => {
 					weeklyProjected: projected, seasonProjected: null,
 					projectionSource: espnProjected != null ? (isDefense ? 'ESPN defense proxy' : 'ESPN stat-line proxy') : weeklyFallback != null ? 'Weekly consensus fallback' : null,
 					weeklyRank: finite(weekly?.overall_rank), weeklyPositionRank: finite(weekly?.position_rank), weeklyGrade: weeklyMeta.grade ?? null,
-					opponent: weeklyMeta.opponent ?? null, rankUncertainty: finite(weeklyMeta.uncertainty), weeklyNote: weeklyMeta.note ?? null };
+					opponent: weeklyMeta.opponent ?? null, rankUncertainty: finite(weeklyMeta.uncertainty), weeklyNote: weeklyMeta.note ?? null,
+					...gameContext(row.nfl_team) };
 			}
 			const espnPlayer = entry?.player;
 			if (!espnPlayer?.id || !espnPlayer.fullName) return null;
@@ -75,7 +85,8 @@ export const load = (async ({ params }) => {
 				position: getPositionName(Number(espnPlayer.defaultPositionId)), nflTeam: getNFLTeamName(Number(espnPlayer.proTeamId)),
 				byeWeek: row?.bye_week ?? null, rank: Number(row?.overall_rank) || null, positionRank: Number(row?.position_rank) || null,
 				injuryStatus: espnPlayer.injuryStatus ?? row?.injury_status ?? null, pickNumber: null, round: null,
-				lineupSlotId: Number(entry.lineupSlotId), weeklyProjected: finite(weekly?.appliedTotal), seasonProjected: finite(season?.appliedTotal) };
+				lineupSlotId: Number(entry.lineupSlotId), weeklyProjected: finite(weekly?.appliedTotal), seasonProjected: finite(season?.appliedTotal),
+				...gameContext(getNFLTeamName(Number(espnPlayer.proTeamId))) };
 		}).filter(Boolean);
 		const players = (livePlayers.length ? livePlayers : draftedPlayers).filter((player: any) => player.name && player.name !== 'Unknown Player');
 		const { starters, bench } = chooseStarters(players, league.platform === 'SLEEPER' ? league.settings?.roster_positions : null);
@@ -116,8 +127,9 @@ export const load = (async ({ params }) => {
 		startSit.edge = edge;
 		const weeklyConflict = finite(startSit.start[0].weeklyRank) != null && finite(startSit.sit[0].weeklyRank) != null
 			&& Number(startSit.start[0].weeklyRank) > Number(startSit.sit[0].weeklyRank);
-		if (edge == null || edge < 1.5 || (weeklyConflict && edge < 3)) {
-			startSit.closeCall = { start: startSit.start[0], sit: startSit.sit[0], edge, weeklyConflict };
+		const locked = Boolean(startSit.start[0].lineupLocked || startSit.sit[0].lineupLocked);
+		if (locked || edge == null || edge < 1.5 || (weeklyConflict && edge < 3)) {
+			startSit.closeCall = { start: startSit.start[0], sit: startSit.sit[0], edge, weeklyConflict, locked };
 			startSit.start = [];
 			startSit.sit = [];
 			startSit.confidence = 'Hold';
@@ -128,7 +140,7 @@ export const load = (async ({ params }) => {
 		total: (user?.players ?? []).length
 	};
 	return { league: { id: league.id, name: league.name, platform: league.platform, seasonYear: league.season_year, teamCount: league.team_count },
-		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, tradeTargets, startSit, scoringPeriod, projectionCoverage,
+		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, tradeTargets, startSit, scoringPeriod, projectionCoverage, kickoffSchedule,
 		methodology: projectionCoverage.projected > 0
 			? league.platform === 'SLEEPER'
 				? `Live Sleeper rosters with ESPN Week ${scoringPeriod} stat-line projections rescored under this league's settings, plus current injuries and consensus fallback.`
