@@ -56,6 +56,26 @@
 			<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{#each data.user?.players ?? [] as player}<button type="button" onclick={() => selectedPlayer = player} class="player-button flex items-center justify-between rounded-lg border border-slate-300 bg-white px-4 py-3 text-left"><span><strong class="block">{player.name}</strong><span class="text-sm text-slate-500">{player.position} · {player.nflTeam ?? 'FA'}</span></span><span class="text-right"><strong class="block text-sm">{player.weeklyProjected != null ? `${player.weeklyProjected} pts` : 'No projection'}</strong><span class="text-lg text-slate-500">›</span></span></button>{/each}</div>
 		</section>
 
+		<section class="border-b border-slate-300 py-8">
+			<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+				<div><p class="text-xs font-black uppercase tracking-widest text-slate-500">Available in your league</p><h2 class="mt-1 text-3xl font-black">Week {data.scoringPeriod} waiver targets</h2></div>
+				<p class="max-w-xl text-right text-sm text-slate-500">Add candidates only—not dynasty drop advice. Ranked by weekly value, your needs, health, matchup, and consensus.</p>
+			</div>
+			{#if data.waiverAdvice.length}
+				<div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+					{#each data.waiverAdvice as player, index}
+						<button type="button" onclick={() => selectedPlayer = player} class="player-button rounded-xl border border-slate-300 bg-white p-5 text-left">
+							<div class="flex items-start justify-between gap-3"><span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 font-black text-slate-950">{index + 1}</span><span class="rounded-full border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600">{player.priority}</span></div>
+							<h3 class="mt-4 text-lg font-black">{player.name}</h3>
+							<p class="mt-1 text-sm text-slate-500">{player.position} · {player.nflTeam}{player.opponent ? ` · ${player.opponent}` : ''}</p>
+							<div class="mt-4 flex items-baseline justify-between"><strong>{player.weeklyProjected} pts</strong><span class="text-sm text-slate-500">{player.weeklyPositionRank ? `${player.position}${player.weeklyPositionRank}` : `ECR ${player.weeklyRank ?? '—'}`}</span></div>
+							{#if player.injuryStatus && !['ACTIVE', 'NA'].includes(String(player.injuryStatus).toUpperCase())}<p class="mt-3 text-sm font-bold text-amber-600">{player.injuryStatus}</p>{/if}
+						</button>
+					{/each}
+				</div>
+			{:else}<p class="text-slate-500">No trustworthy available-player recommendations were found.</p>{/if}
+		</section>
+
 		<section class="border-b border-slate-300 py-8"><p class="text-xs font-black uppercase tracking-widest text-slate-500">League comparison</p><h2 class="mt-1 text-3xl font-black">Power rankings</h2><div class="mt-5 overflow-x-auto"><table class="w-full text-left"><thead class="border-b-2 border-slate-900 text-xs uppercase tracking-wider text-slate-500"><tr><th class="py-3">Rank</th><th class="py-3">Team</th><th class="py-3">Model</th><th class="py-3">Projected core</th></tr></thead><tbody>{#each data.powerRankings as team}<tr class="border-b border-slate-200" class:bg-emerald-50={team.is_user && isSleeper} class:bg-blue-50={team.is_user && !isSleeper}><td class="py-3 text-xl font-black">#{team.powerRank}</td><td class="py-3"><span class="font-bold">{team.team_name}</span>{#if team.is_user}<span class="ml-2 text-xs font-black uppercase text-slate-500">You</span>{/if}</td><td class="py-3 font-semibold">{team.weeklyTotal > 0 ? `${team.weeklyTotal} pts` : 'Rank model'}</td><td class="py-3 text-sm text-slate-600">{team.starters.slice(0, 5).map((player) => player.name).join(' · ')}</td></tr>{/each}</tbody></table></div></section>
 
 		<section class="py-8"><p class="text-xs font-black uppercase tracking-widest text-slate-500">Roster market</p><h2 class="mt-1 text-3xl font-black">Trade-fit watchlist</h2><p class="mt-2 text-sm text-slate-500">Potential roster fits only—not clickable offers and not a fairness recommendation.</p>{#if data.tradeTargets.length}<div class="mt-5 grid gap-x-10 gap-y-5 md:grid-cols-2">{#each data.tradeTargets as player}<article class="border-t border-slate-300 pt-4"><div class="flex items-baseline justify-between gap-3"><h3 class="text-lg font-black">{player.name}</h3><span class="text-sm font-bold text-slate-500">{player.position} · {player.nflTeam}</span></div><p class="mt-1 text-sm text-slate-600">{player.fromTeam} · ECR {player.rank ?? '—'}</p><p class="mt-2 text-xs leading-5 text-slate-500">{player.reason}</p></article>{/each}</div>{:else}<p class="mt-5 text-slate-600">No clear surplus-for-need matches yet.</p>{/if}</section>

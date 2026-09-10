@@ -23,7 +23,7 @@ Local-first fantasy football tooling focused first on reliable ESPN live-draft s
 - Current-season ESPN league import with encrypted credentials, exact settings, teams, and all draft picks
 - One-click authenticated ESPN league refresh with current rosters, lineup slots, injuries, schedule, and weekly/full-season projections
 - Current Sleeper rosters, submitted starters, reserve status, matchup data, scoring settings, and lineup configuration
-- Dark, interactive league season hub with player detail cards, week-specific start/sit optimization, projected weekly power rankings, position comparison, and current-roster trade-fit targets
+- Dark, interactive league season hub with player detail cards, week-specific start/sit optimization, league-filtered waiver targets, projected weekly power rankings, position comparison, and current-roster trade-fit targets
 - Automated weekly consensus import with opponent, weekly/position ECR, expert spread, start/sit grade, and matchup outlook; close or source-conflicted lineup changes are shown as holds instead of forced recommendations
 - Kickoff-aware local refresh scheduler using the current NFL schedule: refresh checkpoints at 24 hours, 3 hours, 90 minutes, 30 minutes, and 10 minutes before each game, plus an hourly pregame startup check; imported ESPN and Sleeper rosters are refreshed and started games are marked locked
 - Local database backup and restore endpoints

@@ -107,6 +107,39 @@ export const load = (async ({ params }) => {
 		return { position, userStrength: round(userStrength), leagueAverage: round(leagueAverage), delta: round(userStrength - leagueAverage) };
 	});
 	const needs = positionComparison.filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).map((item) => item.position);
+	const rosteredIds = new Set(powerRankings.flatMap((team) => team.players.map((player: any) => player.id)).filter(Boolean));
+	const waiverRows = db.prepare(`SELECT p.id,p.full_name,p.position,p.nfl_team,p.bye_week,s.injury_status,
+		w.overall_rank weekly_rank,w.position_rank weekly_position_rank,w.projected_points weekly_points,w.value_json weekly_json,
+		r.overall_rank season_rank FROM players p
+		JOIN player_values w ON w.player_id=p.id AND w.season_year=? AND w.scoring_format='PPR' AND w.source='fantasypros-weekly-ecr-via-dynastyprocess'
+		LEFT JOIN player_values r ON r.player_id=p.id AND r.season_year=? AND r.scoring_format='PPR' AND r.source='fantasypros-ecr-via-dynastyprocess'
+		LEFT JOIN player_status s ON s.player_id=p.id
+		WHERE p.active=1 AND p.position IN ('QB','RB','WR','TE','K','DST','DEF') AND p.nfl_team IS NOT NULL`).all(league.season_year, league.season_year) as any[];
+	const waiverAdvice = waiverRows.filter((row) => !rosteredIds.has(row.id)).map((row) => {
+		const isDefense = ['DST', 'DEF'].includes(String(row.position));
+		const projection = (isDefense ? weeklyDefenseProjection.get(row.nfl_team, league.season_year, scoringPeriod) : weeklyProjection.get(row.id, league.season_year, scoringPeriod)) as any;
+		const defensePoints = finite(projection?.projected_points);
+		const espnPoints = isDefense
+			? defensePoints
+			: league.platform === 'SLEEPER'
+				? scoreSleeperProjection(projection?.stats_json, league.settings?.scoring_settings)
+				: finite(projection?.projected_points);
+		const weeklyPoints = finite(espnPoints) ?? finite(row.weekly_points);
+		const meta = row.weekly_json ? JSON.parse(row.weekly_json) : {};
+		const position = row.position === 'DEF' ? 'DST' : row.position;
+		const game = gameContext(row.nfl_team);
+		const injury = String(row.injury_status ?? '').toUpperCase();
+		const needBonus = needs.includes(position) ? 18 : 0;
+		const score = Number(weeklyPoints ?? 0) * 4 + Math.max(0, 160 - Number(row.weekly_rank ?? 160)) * 0.35 + needBonus
+			- (injury && !['ACTIVE', 'NA'].includes(injury) ? 18 : 0);
+		return { id: row.id, name: row.full_name, position, nflTeam: row.nfl_team, byeWeek: row.bye_week,
+			weeklyProjected: weeklyPoints == null ? null : round(weeklyPoints), weeklyRank: finite(row.weekly_rank),
+			weeklyPositionRank: finite(row.weekly_position_rank), seasonRank: finite(row.season_rank), injuryStatus: row.injury_status,
+			opponent: meta.opponent ?? null, grade: meta.grade ?? null, weeklyNote: meta.note ?? null,
+			projectionSource: espnPoints != null ? (isDefense ? 'ESPN defense proxy' : 'ESPN weekly projection') : 'Weekly consensus fallback', score,
+			priority: needBonus ? 'Roster need' : Number(row.weekly_rank ?? 999) <= 60 ? 'Immediate value' : 'Depth upside', ...game };
+	}).filter((player) => !player.lineupLocked && player.weeklyProjected != null && !['OUT', 'IR', 'SUSPENDED'].includes(String(player.injuryStatus ?? '').toUpperCase()))
+		.sort((a, b) => b.score - a.score).slice(0, 12).map(({ score: _score, ...player }) => player);
 	const tradeTargets = powerRankings.filter((team) => !team.is_user).flatMap((team) => team.players
 		.filter((player: any) => needs.includes(player.position) && Number(team.counts[player.position] ?? 0) > Number(tradeDepth[player.position] ?? 99))
 		.map((player: any) => ({ ...player, fromTeam: team.team_name, ownerName: team.owner_name,
@@ -140,7 +173,7 @@ export const load = (async ({ params }) => {
 		total: (user?.players ?? []).length
 	};
 	return { league: { id: league.id, name: league.name, platform: league.platform, seasonYear: league.season_year, teamCount: league.team_count },
-		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, tradeTargets, startSit, scoringPeriod, projectionCoverage, kickoffSchedule,
+		powerRankings: powerRankings.map(({ rawScore: _raw, ...team }) => team), user, positionComparison, waiverAdvice, tradeTargets, startSit, scoringPeriod, projectionCoverage, kickoffSchedule,
 		methodology: projectionCoverage.projected > 0
 			? league.platform === 'SLEEPER'
 				? `Live Sleeper rosters with ESPN Week ${scoringPeriod} stat-line projections rescored under this league's settings, plus current injuries and consensus fallback.`
